@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../supabase'
 import StarRating from './StarRating'
 
-export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
+export default function PostCard({ post, currentUser, onDelete }) {
   const [comments, setComments] = useState(post.comments || [])
   const [showComments, setShowComments] = useState(false)
   const [newComment, setNewComment] = useState('')
@@ -10,6 +10,12 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   const [liked, setLiked] = useState(false)
   const [likeCount, setLikeCount] = useState(post.likes || 0)
   const [deleting, setDeleting] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState(post.title)
+  const [editReview, setEditReview] = useState(post.review || '')
+  const [editRating, setEditRating] = useState(post.rating)
+  const [currentPost, setCurrentPost] = useState(post)
+  const [saving, setSaving] = useState(false)
   const isOwner = currentUser && currentUser.id === post.user_id
 
   const handleDelete = async () => {
@@ -21,6 +27,22 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
     }
     await supabase.from('posts').delete().eq('id', post.id)
     onDelete?.(post.id)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editTitle.trim() || editRating === 0) return
+    setSaving(true)
+    const { data, error } = await supabase
+      .from('posts')
+      .update({ title: editTitle.trim(), review: editReview.trim(), rating: editRating, avg_rating: editRating })
+      .eq('id', post.id)
+      .select()
+      .single()
+    if (!error && data) {
+      setCurrentPost(data)
+      setEditing(false)
+    }
+    setSaving(false)
   }
 
   const timeAgo = (dateStr) => {
@@ -77,7 +99,7 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
     setSubmitting(false)
   }
 
-  const [bg, fg] = avatarColor(post.username)
+  const [bg, fg] = avatarColor(currentPost.username)
 
   return (
     <article style={{
@@ -94,92 +116,159 @@ export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
           display:'flex', alignItems:'center', justifyContent:'center',
           fontSize:13, fontWeight:600, flexShrink:0,
           fontFamily:'Syne, sans-serif',
-        }}>{initials(post.username)}</div>
+        }}>{initials(currentPost.username)}</div>
         <div style={{ flex:1 }}>
-          <div style={{ fontSize:14, fontWeight:500 }}>{post.username}</div>
-          <div style={{ fontSize:11, color:'var(--text3)' }}>{timeAgo(post.created_at)}</div>
+          <div style={{ fontSize:14, fontWeight:500 }}>{currentPost.username}</div>
+          <div style={{ fontSize:11, color:'var(--text3)' }}>{timeAgo(currentPost.created_at)}</div>
         </div>
-        {isOwner && (
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            style={{
-              background:'transparent', border:'none',
-              color:'var(--text3)', fontSize:13, cursor:'pointer',
-              padding:'4px 8px', borderRadius:'var(--radius-sm)',
-              transition:'all 0.15s',
-            }}
-            onMouseEnter={e => { e.target.style.color='#CC2E25'; e.target.style.background='#FFF0EF' }}
-            onMouseLeave={e => { e.target.style.color='var(--text3)'; e.target.style.background='transparent' }}
-          >{deleting ? '삭제 중...' : '🗑 삭제'}</button>
+        {isOwner && !editing && (
+          <div style={{ display:'flex', gap:6 }}>
+            <button
+              onClick={() => setEditing(true)}
+              style={{
+                background:'transparent', border:'none',
+                color:'var(--text3)', fontSize:13, cursor:'pointer',
+                padding:'4px 8px', borderRadius:'var(--radius-sm)',
+              }}
+              onMouseEnter={e => { e.target.style.color='var(--text)'; e.target.style.background='var(--surface2)' }}
+              onMouseLeave={e => { e.target.style.color='var(--text3)'; e.target.style.background='transparent' }}
+            >✏️ 수정</button>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              style={{
+                background:'transparent', border:'none',
+                color:'var(--text3)', fontSize:13, cursor:'pointer',
+                padding:'4px 8px', borderRadius:'var(--radius-sm)',
+              }}
+              onMouseEnter={e => { e.target.style.color='#CC2E25'; e.target.style.background='#FFF0EF' }}
+              onMouseLeave={e => { e.target.style.color='var(--text3)'; e.target.style.background='transparent' }}
+            >{deleting ? '삭제 중...' : '🗑 삭제'}</button>
+          </div>
         )}
       </div>
 
-      {post.image_url && (
+      {currentPost.image_url && (
         <div style={{ width:'100%', aspectRatio:'4/3', overflow:'hidden', background:'var(--surface2)' }}>
           <img
-            src={post.image_url}
-            alt={post.title}
+            src={currentPost.image_url}
+            alt={currentPost.title}
             style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }}
           />
         </div>
       )}
 
       <div style={{ padding:'14px 16px' }}>
-        <div style={{ fontSize:16, fontWeight:600, marginBottom:8, fontFamily:'Syne, sans-serif' }}>
-          {post.title}
-        </div>
-        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-          <StarRating value={Math.round(post.avg_rating || post.rating)} readonly size={18} />
-          <span style={{ fontSize:14, fontWeight:600 }}>
-            {Number(post.avg_rating || post.rating).toFixed(1)}
-          </span>
-          {post.rating_count > 1 && (
-            <span style={{ fontSize:12, color:'var(--text3)' }}>({post.rating_count}명 평가)</span>
-          )}
-        </div>
-        {post.review && (
-          <p style={{ fontSize:14, color:'var(--text2)', lineHeight:1.65, marginBottom:12 }}>
-            {post.review}
-          </p>
+        {editing ? (
+          <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+            <input
+              value={editTitle}
+              onChange={e => setEditTitle(e.target.value)}
+              style={{
+                width:'100%', padding:'9px 12px', fontSize:15, fontWeight:600,
+                border:'0.5px solid var(--border)', borderRadius:'var(--radius-sm)',
+                background:'var(--bg)', color:'var(--text)', outline:'none',
+                fontFamily:'Syne, sans-serif',
+              }}
+              onFocus={e => e.target.style.borderColor='var(--brand)'}
+              onBlur={e => e.target.style.borderColor='var(--border)'}
+            />
+            <StarRating value={editRating} onChange={setEditRating} size={24} />
+            <textarea
+              value={editReview}
+              onChange={e => setEditReview(e.target.value)}
+              rows={3}
+              style={{
+                width:'100%', padding:'9px 12px', fontSize:14,
+                border:'0.5px solid var(--border)', borderRadius:'var(--radius-sm)',
+                background:'var(--bg)', color:'var(--text)', outline:'none',
+                resize:'vertical', lineHeight:1.6,
+              }}
+              onFocus={e => e.target.style.borderColor='var(--brand)'}
+              onBlur={e => e.target.style.borderColor='var(--border)'}
+              placeholder="리뷰 내용..."
+            />
+            <div style={{ display:'flex', gap:8 }}>
+              <button
+                onClick={() => setEditing(false)}
+                style={{
+                  flex:1, padding:'8px', fontSize:13,
+                  border:'0.5px solid var(--border)', borderRadius:'var(--radius-sm)',
+                  background:'var(--surface)', color:'var(--text2)',
+                }}
+              >취소</button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={saving || !editTitle.trim()}
+                style={{
+                  flex:2, padding:'8px', fontSize:13, fontWeight:600,
+                  border:'none', borderRadius:'var(--radius-sm)',
+                  background:'var(--brand)', color:'white',
+                  opacity: saving ? 0.7 : 1,
+                }}
+              >{saving ? '저장 중...' : '저장'}</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize:16, fontWeight:600, marginBottom:8, fontFamily:'Syne, sans-serif' }}>
+              {currentPost.title}
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+              <StarRating value={Math.round(currentPost.avg_rating || currentPost.rating)} readonly size={18} />
+              <span style={{ fontSize:14, fontWeight:600 }}>
+                {Number(currentPost.avg_rating || currentPost.rating).toFixed(1)}
+              </span>
+              {currentPost.rating_count > 1 && (
+                <span style={{ fontSize:12, color:'var(--text3)' }}>({currentPost.rating_count}명 평가)</span>
+              )}
+            </div>
+            {currentPost.review && (
+              <p style={{ fontSize:14, color:'var(--text2)', lineHeight:1.65, marginBottom:12 }}>
+                {currentPost.review}
+              </p>
+            )}
+          </>
         )}
 
-        <div style={{
-          display:'flex', gap:4,
-          paddingTop:12, borderTop:'0.5px solid var(--border)',
-        }}>
-          <button
-            onClick={handleLike}
-            style={{
-              display:'flex', alignItems:'center', gap:5,
-              background: liked ? '#FFF0EF' : 'transparent',
-              color: liked ? 'var(--brand)' : 'var(--text2)',
-              border: '0.5px solid',
-              borderColor: liked ? 'var(--brand)' : 'var(--border)',
-              borderRadius: 'var(--radius-sm)',
-              padding:'6px 12px', fontSize:13, fontWeight:500,
-              transition:'all 0.15s',
-            }}
-          >
-            ♥ {likeCount > 0 ? likeCount : '좋아요'}
-          </button>
-          <button
-            onClick={loadComments}
-            style={{
-              display:'flex', alignItems:'center', gap:5,
-              background:'transparent', color:'var(--text2)',
-              border:'0.5px solid var(--border)',
-              borderRadius:'var(--radius-sm)',
-              padding:'6px 12px', fontSize:13, fontWeight:500,
-              transition:'all 0.15s',
-            }}
-          >
-            💬 {post.comment_count > 0 ? `${post.comment_count}개` : '댓글'}
-          </button>
-        </div>
+        {!editing && (
+          <div style={{
+            display:'flex', gap:4,
+            paddingTop:12, borderTop:'0.5px solid var(--border)',
+          }}>
+            <button
+              onClick={handleLike}
+              style={{
+                display:'flex', alignItems:'center', gap:5,
+                background: liked ? '#FFF0EF' : 'transparent',
+                color: liked ? 'var(--brand)' : 'var(--text2)',
+                border: '0.5px solid',
+                borderColor: liked ? 'var(--brand)' : 'var(--border)',
+                borderRadius: 'var(--radius-sm)',
+                padding:'6px 12px', fontSize:13, fontWeight:500,
+                transition:'all 0.15s',
+              }}
+            >
+              ♥ {likeCount > 0 ? likeCount : '좋아요'}
+            </button>
+            <button
+              onClick={loadComments}
+              style={{
+                display:'flex', alignItems:'center', gap:5,
+                background:'transparent', color:'var(--text2)',
+                border:'0.5px solid var(--border)',
+                borderRadius:'var(--radius-sm)',
+                padding:'6px 12px', fontSize:13, fontWeight:500,
+                transition:'all 0.15s',
+              }}
+            >
+              💬 {post.comment_count > 0 ? `${post.comment_count}개` : '댓글'}
+            </button>
+          </div>
+        )}
       </div>
 
-      {showComments && (
+      {showComments && !editing && (
         <div style={{ padding:'0 16px 14px', borderTop:'0.5px solid var(--border)' }}>
           <div style={{ paddingTop:12, display:'flex', flexDirection:'column', gap:8 }}>
             {comments.length === 0 && (
