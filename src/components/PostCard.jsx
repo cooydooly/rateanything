@@ -2,13 +2,26 @@ import { useState } from 'react'
 import { supabase } from '../supabase'
 import StarRating from './StarRating'
 
-export default function PostCard({ post, currentUser, onUpdate }) {
+export default function PostCard({ post, currentUser, onUpdate, onDelete }) {
   const [comments, setComments] = useState(post.comments || [])
   const [showComments, setShowComments] = useState(false)
   const [newComment, setNewComment] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [liked, setLiked] = useState(false)
   const [likeCount, setLikeCount] = useState(post.likes || 0)
+  const [deleting, setDeleting] = useState(false)
+  const isOwner = currentUser && currentUser.id === post.user_id
+
+  const handleDelete = async () => {
+    if (!window.confirm('이 리뷰를 삭제할까요?')) return
+    setDeleting(true)
+    if (post.image_url) {
+      const fileName = post.image_url.split('/').pop()
+      await supabase.storage.from('post-images').remove([fileName])
+    }
+    await supabase.from('posts').delete().eq('id', post.id)
+    onDelete?.(post.id)
+  }
 
   const timeAgo = (dateStr) => {
     const diff = (Date.now() - new Date(dateStr)) / 1000
@@ -74,7 +87,6 @@ export default function PostCard({ post, currentUser, onUpdate }) {
       overflow: 'hidden',
       animation: 'fadeUp 0.35s ease forwards',
     }}>
-      {/* Header */}
       <div style={{ display:'flex', alignItems:'center', gap:10, padding:'14px 16px' }}>
         <div style={{
           width:38, height:38, borderRadius:'50%',
@@ -87,9 +99,22 @@ export default function PostCard({ post, currentUser, onUpdate }) {
           <div style={{ fontSize:14, fontWeight:500 }}>{post.username}</div>
           <div style={{ fontSize:11, color:'var(--text3)' }}>{timeAgo(post.created_at)}</div>
         </div>
+        {isOwner && (
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            style={{
+              background:'transparent', border:'none',
+              color:'var(--text3)', fontSize:13, cursor:'pointer',
+              padding:'4px 8px', borderRadius:'var(--radius-sm)',
+              transition:'all 0.15s',
+            }}
+            onMouseEnter={e => { e.target.style.color='#CC2E25'; e.target.style.background='#FFF0EF' }}
+            onMouseLeave={e => { e.target.style.color='var(--text3)'; e.target.style.background='transparent' }}
+          >{deleting ? '삭제 중...' : '🗑 삭제'}</button>
+        )}
       </div>
 
-      {/* Image */}
       {post.image_url && (
         <div style={{ width:'100%', aspectRatio:'4/3', overflow:'hidden', background:'var(--surface2)' }}>
           <img
@@ -100,7 +125,6 @@ export default function PostCard({ post, currentUser, onUpdate }) {
         </div>
       )}
 
-      {/* Body */}
       <div style={{ padding:'14px 16px' }}>
         <div style={{ fontSize:16, fontWeight:600, marginBottom:8, fontFamily:'Syne, sans-serif' }}>
           {post.title}
@@ -120,7 +144,6 @@ export default function PostCard({ post, currentUser, onUpdate }) {
           </p>
         )}
 
-        {/* Actions */}
         <div style={{
           display:'flex', gap:4,
           paddingTop:12, borderTop:'0.5px solid var(--border)',
@@ -156,7 +179,6 @@ export default function PostCard({ post, currentUser, onUpdate }) {
         </div>
       </div>
 
-      {/* Comments */}
       {showComments && (
         <div style={{ padding:'0 16px 14px', borderTop:'0.5px solid var(--border)' }}>
           <div style={{ paddingTop:12, display:'flex', flexDirection:'column', gap:8 }}>
